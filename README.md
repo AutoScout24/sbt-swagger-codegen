@@ -15,6 +15,10 @@ Declare it inside your `project\plugins.sbt` like this:
 
 `addSbtPlugin("eu.unicredit" % "sbt-swagger-codegen" % "0.0.6-SNAPSHOT")`
 
+Enable it in your `build.sbt` like this:
+
+`enablePlugins(SwaggerCodegenPlugin)`
+
 ## Quick start
 
 For a *super fast* hands-on the project refer to the related example and check out [sbt-swagger-codegen-examples](https://github.com/unicredit/sbt-swagger-codegen-examples)
