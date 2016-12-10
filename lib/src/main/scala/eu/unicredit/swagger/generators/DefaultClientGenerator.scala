@@ -107,8 +107,8 @@ class DefaultClientGenerator
     val params1 = "@Inject() (WS: WSClient)"
     val params2 = (CLASSDEF("") withParams PARAM("baseUrl", StringClass)).empty
 
-    val PARAMS: Tree =
-      DEFINFER("params") withFlags (Flags.PRIVATE) withParams (PARAM(
+    val urlParams: Tree =
+      DEFINFER("urlParams") withFlags (Flags.PRIVATE) withParams (PARAM(
         "pairs",
         TYPE_*(TYPE_TUPLE(StringClass, OptionClass TYPE_OF AnyClass)))) := BLOCK {
         (
@@ -123,10 +123,30 @@ class DefaultClientGenerator
             ELSE LIT("")
         )
       }
-
+     
+    val JsValueClass =
+      definitions.getClass("play.api.libs.json.JsValue")
+    
+    val bodyParams:Tree =
+      DEFINFER("bodyParams") withFlags (Flags.PRIVATE) withParams (PARAM(
+        "items",
+        TYPE_*(OptionClass TYPE_OF JsValueClass))) := BLOCK {
+        (
+          IF(REF("pairs") DOT "nonEmpty")
+            THEN (
+              REF("pairs")
+                DOT "collect" APPLY BLOCK(
+                CASE(TUPLE(ID("k"), REF("Some") UNAPPLY (ID("v")))) ==> (REF(
+                  "k") INFIX ("+", LIT("=")) INFIX ("+", REF("v"))))
+                DOT "mkString" APPLY (LIT("?"), LIT("&"), LIT(""))
+            )
+            ELSE LIT("")
+        )
+      }
+        
+      
     val body = BLOCK {
-      PARAMS +:
-        completePaths.map(composeClient).flatten
+      completePaths.map(composeClient).flatten :+ urlParams :+ bodyParams
     }
 
     Seq(
@@ -141,31 +161,65 @@ class DefaultClientGenerator
                       opType: String,
                       params: Seq[Parameter],
                       respType: (String, Option[Type])): Tree = {
-    val bodyParams = getPlainParamsFromBody(params)
+                        
+    // warn about unsupported param types
+    params foreach {
+      case _: PathParameter => 
+      case _: HeaderParameter => 
+      case _: QueryParameter => 
+      case _: BodyParameter =>
+      case _ =>
+        println("unmanaged parameter please contact the developer to implement it XD");
+        false
+    }
+      
+    val pathParams1   = params collect { case x:PathParameter => x }
+    val headerParams1 = params collect { case x:HeaderParameter => x }
+    val queryParams1  = params collect { case x:QueryParameter => x }
+    val bodyParams1   = params collect { case x:BodyParameter => x }
+    
+    val sortedParams:Seq[Parameter] = pathParams1 ++ headerParams1 ++ queryParams1 ++ bodyParams1
+    
+    val methodParams:Seq[ValDef]  =
+      sortedParams map { it =>
+        PARAM(it.getName, paramType(it)):ValDef
+      }
+    
+    // TODO this get(_*) is deprecated
+    val bodyParams:Seq[Tree]  =
+      bodyParams1 map { it =>
+          val name  = it.getName
+          val value = REF("Json") DOT "toJson" APPLY REF(it.getName)
+          if (it.getRequired) REF("Some") APPLY value
+          else                value
+      }
 
-    val fullBodyParams = getParamsToBody(params)
-
-    val methodParams = getMethodParamas(params)
-
-    //probably to be fixed with a custom ordering
     val urlParams: Seq[Tree] =
-      params collect {
-        case query: QueryParameter =>
-          val name = query.getName
-          LIT(name) INFIX ("->",
-          if (query.getRequired) REF("Some") APPLY REF(name)
-          else REF(name))
+      queryParams1 map { it =>
+        val name  = it.getName
+        val value = REF(name)
+        LIT(name) INFIX ("->",
+          if (it.getRequired) REF("Some") APPLY value
+          else                value
+        )
       }
 
     val RuntimeExceptionClass =
       definitions.getClass("java.lang.RuntimeException")
 
+    // NOTE BodyParameter in methodParams here was typed to noOptParamType(_) for some reason originally
     val tree: Tree =
-      DEFINFER(methodName) withParams (methodParams.values ++ bodyParams.values) := BLOCK(
-        REF("WS") DOT "url" APPLY
-          (INTERP(
+      DEFINFER(methodName) withParams methodParams := BLOCK(
+        REF("WS") DOT "url" APPLY (
+          INTERP(
             "s",
-            LIT(cleanDuplicateSlash("$baseUrl/" + cleanPathParams(url)))) INFIX ("+", THIS DOT "params" APPLY (urlParams: _*))) DOT opType APPLY fullBodyParams.values DOT "map" APPLY (
+            LIT(cleanDuplicateSlash("$baseUrl/" + cleanPathParams(url)))
+          )
+          INFIX (
+            "+",
+            THIS DOT "urlParams" APPLY (urlParams: _*)
+          )
+        ) DOT opType APPLY bodyParams DOT "map" APPLY (
           LAMBDA(PARAM("resp")) ==> BLOCK {
             Seq(
               IF(
@@ -175,39 +229,25 @@ class DefaultClientGenerator
                   PAREN(REF("resp") DOT "status" INFIX ("<=", LIT(299)))
                 )
               ).THEN(
-                  respType._2.map { typ =>
-                    {
-                      REF("Json") DOT "parse" APPLY (REF("resp") DOT "body") DOT
-                        "as" APPLYTYPE typ
-                    }
-                  }.getOrElse(REF("Unit"))
-                )
-                .ELSE(
-                  THROW(RuntimeExceptionClass,
-                        INFIX_CHAIN("+",
-                                    LIT("unexpected response status: "),
-                                    REF("resp") DOT "status",
-                                    LIT(" "),
-                                    REF("resp") DOT "body"))
-                )
+                respType._2.map { typ =>
+                  {
+                    REF("Json") DOT "parse" APPLY (REF("resp") DOT "body") DOT
+                      "as" APPLYTYPE typ
+                  }
+                }.getOrElse(REF("Unit"))
+              )
+              .ELSE(
+                THROW(RuntimeExceptionClass,
+                      INFIX_CHAIN("+",
+                                  LIT("unexpected response status: "),
+                                  REF("resp") DOT "status",
+                                  LIT(" "),
+                                  REF("resp") DOT "body"))
+              )
             )
           }
         ))
 
     tree
   }
-
-  def getParamsToBody(params: Seq[Parameter]): Map[String, Tree] =
-    params.collect {
-      case bp: BodyParameter =>
-        val tree = REF("Json") DOT "toJson" APPLY REF(bp.getName)
-        bp.getName -> tree
-    }.toMap
-
-  def getPlainParamsFromBody(params: Seq[Parameter]): Map[String, ValDef] =
-    params.collect {
-      case bp: BodyParameter =>
-        val tree: ValDef = PARAM(bp.getName, noOptParamType(bp))
-        bp.getName -> tree
-    }.toMap
 }
