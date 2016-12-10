@@ -12,7 +12,7 @@ lazy val common = Seq(
 lazy val lib = project
   .in(file("lib"))
   .settings(common)
-  .settings(reformatOnCompileSettings)
+  //.settings(reformatOnCompileSettings)
   .settings(
     name := """sbt-swagger-codegen-lib""",
     libraryDependencies ++= Seq(
@@ -24,7 +24,7 @@ lazy val lib = project
 lazy val plugin = project
   .in(file("plugin"))
   .settings(common)
-  .settings(reformatOnCompileSettings)
+  //.settings(reformatOnCompileSettings)
   .settings(
     name := """sbt-swagger-codegen""",
     sbtPlugin := true
@@ -33,7 +33,7 @@ lazy val plugin = project
 
 lazy val root = project
   .in(file("."))
-  .settings(reformatOnCompileSettings)
+  //.settings(reformatOnCompileSettings)
   .settings(
     publish := {}
   )
