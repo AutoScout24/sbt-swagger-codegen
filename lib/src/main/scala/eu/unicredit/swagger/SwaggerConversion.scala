@@ -18,6 +18,7 @@ import treehugger.forest._
 import definitions._
 import io.swagger.models.Model
 import io.swagger.models.ComposedModel
+import io.swagger.models.RefModel
 import treehuggerDSL._
 import io.swagger.models.properties._
 import io.swagger.models.parameters._
@@ -117,12 +118,19 @@ trait SwaggerConversion {
     model match {
       case c:ComposedModel =>
         println(">>> composed")
+        println(s"interfaces: ${c.getInterfaces}")
+        println(s"parent: ${c.getParent}")
+        println(s"child: ${c.getChild}")
+        println(s"allof: ${c.getAllOf}")
         Option(c.getAllOf).map(_.asScala).toVector.flatten.zipWithIndex foreach { case (part, idx) =>
            println(s"### $idx $part")
            getProperties(part) foreach println
         }
         println("<<< composed")
         Option(c.getAllOf).map(_.asScala).toVector.flatten.flatMap(getProperties)
+      case r:RefModel =>
+        println(s"### ref model ${r.getSimpleRef}")
+        Option(model.getProperties).map(_.asScala).getOrElse(Iterable.empty)
       case _ =>
         Option(model.getProperties).map(_.asScala).getOrElse(Iterable.empty)
     }
