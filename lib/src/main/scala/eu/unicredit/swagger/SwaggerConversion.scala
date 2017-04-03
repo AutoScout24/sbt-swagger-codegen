@@ -114,6 +114,17 @@ trait SwaggerConversion {
   }
 
   def getProperties(model: Model): Iterable[(String, Property)] = {
-    Option(model.getProperties).map(_.asScala).getOrElse(Iterable.empty)
+    model match {
+      case c:ComposedModel =>
+        println(">>> composed")
+        Option(c.getAllOf).map(_.asScala).toVector.flatten.zipWithIndex foreach { case (part, idx) =>
+           println(s"### $idx $part")
+           getProperties(part) foreach println
+        }
+        println("<<< composed")
+        Option(c.getAllOf).map(_.asScala).toVector.flatten.flatMap(getProperties)
+      case _ =>
+        Option(model.getProperties).map(_.asScala).getOrElse(Iterable.empty)
+    }
   }
 }
