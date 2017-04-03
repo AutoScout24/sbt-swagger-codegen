@@ -17,6 +17,7 @@ package eu.unicredit.swagger
 import treehugger.forest._
 import definitions._
 import io.swagger.models.Model
+import io.swagger.models.ComposedModel
 import treehuggerDSL._
 import io.swagger.models.properties._
 import io.swagger.models.parameters._
@@ -113,7 +114,6 @@ trait SwaggerConversion {
   }
 
   def getProperties(model: Model): Iterable[(String, Property)] = {
-    val props = model.getProperties
-    if (props == null) Iterable.empty else props.asScala
+    Option(model.getProperties).map(_.asScala).getOrElse(Iterable.empty)
   }
 }
